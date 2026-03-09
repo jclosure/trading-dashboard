@@ -18,30 +18,23 @@ def kpi_row(account) -> None:
     c4.metric("Day P/L", f"${delta:,.2f}")
 
 
-def positions_table(positions) -> pd.DataFrame:
-    rows = []
-    for p in positions:
-        mv = float(p.market_value)
-        cost = float(p.cost_basis)
-        upl = float(p.unrealized_pl)
-        uplpc = float(p.unrealized_plpc) * 100
-        rows.append(
-            {
-                "Symbol": p.symbol,
-                "Side": str(p.side),
-                "Qty": float(p.qty),
-                "Avg Entry": float(p.avg_entry_price),
-                "Market Value": mv,
-                "Cost Basis": cost,
-                "Unrealized P/L": upl,
-                "Unrealized P/L %": uplpc,
-                "Current Price": float(p.current_price),
-            }
-        )
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.sort_values(by="Market Value", ascending=False)
-    return df
+def positions_table(positions_df: pd.DataFrame) -> pd.DataFrame:
+    if positions_df.empty:
+        return pd.DataFrame()
+    df = positions_df.rename(
+        columns={
+            "symbol": "Symbol",
+            "side": "Side",
+            "qty": "Qty",
+            "avg_entry_price": "Avg Entry",
+            "market_value": "Market Value",
+            "cost_basis": "Cost Basis",
+            "unrealized_pl": "Unrealized P/L",
+            "unrealized_pl_pct": "Unrealized P/L %",
+            "current_price": "Current Price",
+        }
+    )
+    return df.sort_values(by="Market Value", ascending=False)
 
 
 def orders_table(orders) -> pd.DataFrame:
@@ -57,6 +50,7 @@ def orders_table(orders) -> pd.DataFrame:
                 "Qty": float(o.qty) if o.qty is not None else None,
                 "Notional": float(o.notional) if o.notional is not None else None,
                 "Limit": float(o.limit_price) if o.limit_price is not None else None,
+                "Filled Avg": float(o.filled_avg_price) if o.filled_avg_price is not None else None,
             }
         )
     return pd.DataFrame(rows)
@@ -69,7 +63,25 @@ def portfolio_chart(history):
     ts = pd.to_datetime(history.timestamp, unit="s", utc=True).tz_convert("America/Chicago")
     df = pd.DataFrame({"time": ts, "equity": history.equity, "profit_loss": history.profit_loss})
     fig = px.line(df, x="time", y="equity", title="Intraday Equity")
-    fig.update_layout(height=360, margin=dict(l=20, r=20, t=50, b=20))
+    fig.update_layout(height=340, margin=dict(l=20, r=20, t=50, b=20))
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def exposure_chart(positions_df: pd.DataFrame):
+    if positions_df.empty:
+        st.info("No exposures to chart.")
+        return
+    chart_df = positions_df[["symbol", "signed_exposure", "unrealized_pl"]].copy()
+    chart_df["Direction"] = chart_df["signed_exposure"].apply(lambda x: "Long" if x >= 0 else "Short")
+    fig = px.bar(
+        chart_df,
+        x="symbol",
+        y="signed_exposure",
+        color="unrealized_pl",
+        title="Exposure by Symbol (signed)",
+        labels={"symbol": "Symbol", "signed_exposure": "Exposure ($)", "unrealized_pl": "U P/L"},
+    )
+    fig.update_layout(height=320, margin=dict(l=20, r=20, t=50, b=20))
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -95,3 +107,12 @@ def watchlist_quotes(quotes: dict):
         st.dataframe(df.sort_values("Symbol"), use_container_width=True, hide_index=True)
     else:
         st.info("No quotes available.")
+
+
+def alerts_panel(alerts: list[str]):
+    st.subheader("Risk Alerts")
+    if not alerts:
+        st.success("No active risk alerts.")
+        return
+    for a in alerts:
+        st.warning(a)

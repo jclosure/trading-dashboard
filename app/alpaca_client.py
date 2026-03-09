@@ -6,7 +6,7 @@ from typing import Iterable
 
 from dotenv import load_dotenv
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import GetOrdersRequest
+from alpaca.trading.requests import GetOrdersRequest, GetPortfolioHistoryRequest
 from alpaca.trading.enums import QueryOrderStatus
 from alpaca.data.historical.stock import StockHistoricalDataClient
 from alpaca.data.requests import StockLatestQuoteRequest
@@ -52,8 +52,8 @@ class AlpacaGateway:
         return self.trading.get_orders(filter=req)
 
     def portfolio_history(self):
-        # default intraday history from Alpaca SDK account endpoint
-        return self.trading.get_account_portfolio_history(period="1D", timeframe="5Min", extended_hours=True)
+        req = GetPortfolioHistoryRequest(period="1D", timeframe="5Min", extended_hours=True)
+        return self.trading.get_portfolio_history(history_filter=req)
 
     def latest_quotes(self, symbols: Iterable[str]):
         syms = sorted(set(s.upper() for s in symbols))

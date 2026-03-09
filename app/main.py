@@ -3,7 +3,8 @@ from __future__ import annotations
 import streamlit as st
 
 from app.alpaca_client import AlpacaGateway, load_config
-from app.ui import kpi_row, orders_table, portfolio_chart, positions_table, watchlist_quotes
+from app.analytics import aggregate_pl, alert_flags, build_positions_df, drawdown_from_history, exposure_stats, performance_stats
+from app.ui import alerts_panel, exposure_chart, kpi_row, orders_table, portfolio_chart, positions_table, watchlist_quotes
 
 st.set_page_config(page_title="Loop + Joel Trading Dashboard", page_icon="📈", layout="wide")
 
@@ -12,10 +13,7 @@ st.caption("Paper trading realtime monitor via Alpaca")
 
 refresh = st.sidebar.slider("Refresh interval (seconds)", min_value=2, max_value=60, value=5)
 st.sidebar.write("Auto-refresh is enabled")
-st.sidebar.caption("This page updates itself on interval.")
-
-if "last_refresh" not in st.session_state:
-    st.session_state.last_refresh = 0
+st.sidebar.caption("LAN-ready via 0.0.0.0 bind")
 
 try:
     cfg = load_config()
@@ -27,24 +25,47 @@ except Exception as e:
 account = gw.account()
 positions = gw.positions()
 open_orders = gw.open_orders()
-recent_orders = gw.recent_orders(limit=100)
+recent_orders = gw.recent_orders(limit=200)
 history = gw.portfolio_history()
 tracked = sorted(set(cfg.watchlist + [p.symbol for p in positions]))
 quotes = gw.latest_quotes(tracked)
 
+positions_df = build_positions_df(positions)
+recent_orders_df = orders_table(recent_orders)
+pl = aggregate_pl(positions_df, account)
+exposure = exposure_stats(positions_df, account)
+dd = drawdown_from_history(history)
+perf = performance_stats(recent_orders_df)
+alerts = alert_flags(pl, exposure, dd, float(account.equity))
+
 kpi_row(account)
 
-col1, col2 = st.columns([2, 1])
-with col1:
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Realized P/L (est)", f"${pl['realized_est']:,.2f}")
+m2.metric("Unrealized P/L", f"${pl['unrealized']:,.2f}")
+m3.metric("Gross Exposure", f"${exposure['gross']:,.2f}", f"{exposure['gross_pct']:.1f}% of eq")
+m4.metric("Net Exposure", f"${exposure['net']:,.2f}", f"{exposure['net_pct']:.1f}% of eq")
+
+n1, n2, n3, n4 = st.columns(4)
+wr = "n/a" if perf["win_rate"] is None else f"{perf['win_rate']:.1f}%"
+aw = "n/a" if perf["avg_win"] is None else f"${perf['avg_win']:,.2f}"
+al = "n/a" if perf["avg_loss"] is None else f"${perf['avg_loss']:,.2f}"
+n1.metric("Filled Orders (sample)", f"{perf['fills']}")
+n2.metric("Win Rate (sample)", wr)
+n3.metric("Avg Win (sample)", aw)
+n4.metric("Avg Loss (sample)", al)
+
+st.metric("Max Drawdown (intraday)", f"{dd['max_drawdown']:.2f}%")
+
+c1, c2 = st.columns([2, 1])
+with c1:
     st.subheader("Portfolio")
     portfolio_chart(history)
-with col2:
-    st.subheader("Open Orders")
-    oo = orders_table(open_orders)
-    st.dataframe(oo, use_container_width=True, hide_index=True)
+with c2:
+    alerts_panel(alerts)
 
 st.subheader("Positions")
-pos_df = positions_table(positions)
+pos_df = positions_table(positions_df)
 if pos_df.empty:
     st.info("No open positions.")
 else:
@@ -62,12 +83,20 @@ else:
         },
     )
 
-st.subheader("Watchlist Quotes")
-watchlist_quotes(quotes)
+st.subheader("Exposure Heat")
+exposure_chart(positions_df)
+
+left, right = st.columns([1, 1])
+with left:
+    st.subheader("Open Orders")
+    oo = orders_table(open_orders)
+    st.dataframe(oo, use_container_width=True, hide_index=True)
+with right:
+    st.subheader("Watchlist Quotes")
+    watchlist_quotes(quotes)
 
 st.subheader("Recent Orders")
-ro = orders_table(recent_orders)
-st.dataframe(ro, use_container_width=True, hide_index=True)
+st.dataframe(recent_orders_df, use_container_width=True, hide_index=True)
 
 st.markdown(
     f"""
