@@ -50,10 +50,18 @@ def symbol_allowed(symbol: str, cfg: ExecConfig) -> bool:
     return True
 
 
+def load_regime_overrides(path: str | Path = "apex_overrides.yaml") -> dict[str, Any]:
+    if not Path(path).exists():
+        return {}
+    raw = yaml.safe_load(Path(path).read_text()) or {}
+    return raw.get("regime", {})
+
+
 def run_once() -> dict[str, Any]:
     env = load_config()
     gw = AlpacaGateway(env)
     cfg = load_exec_config("apex_config.yaml")
+    regime = load_regime_overrides("apex_overrides.yaml")
     engine = ApexEngine(gw, log_dir="logs")
 
     cycle = engine.recommendations()
@@ -109,6 +117,53 @@ def run_once() -> dict[str, Any]:
                 )
                 actions.append({"action": "BUY", "symbol": sym, "notional": target, "order_id": str(order.id)})
 
+    # Regime overlays (e.g., oil shock)
+    if regime.get("active"):
+        # Optional funding trims first
+        trim_syms = [s.upper() for s in regime.get("funding", {}).get("trim_symbols", [])]
+        trim_pct_each = float(regime.get("funding", {}).get("trim_pct_each", 0.0))
+        for sym in trim_syms:
+            current_mv = mv_by_symbol.get(sym, 0.0)
+            notional = current_mv * trim_pct_each
+            if notional >= cfg.min_order_notional_usd and cfg.auto_execute and symbol_allowed(sym, cfg):
+                order = gw.trading.submit_order(
+                    order_data=MarketOrderRequest(
+                        symbol=sym,
+                        notional=round(notional, 2),
+                        side=OrderSide.SELL,
+                        time_in_force=TimeInForce.DAY,
+                    )
+                )
+                actions.append({"action": "SELL", "symbol": sym, "notional": notional, "order_id": str(order.id), "tag": "regime_funding"})
+                cash += notional
+
+        overlays = regime.get("tactical_overlays", [])
+        for ov in overlays:
+            sym = str(ov.get("symbol", "")).upper()
+            if not sym or not symbol_allowed(sym, cfg):
+                continue
+            target_pct = float(ov.get("target_portfolio_pct", 0.0))
+            desired = equity * target_pct
+            current_mv = mv_by_symbol.get(sym, 0.0)
+            add_need = max(0.0, desired - current_mv)
+            room = max(0.0, cash - min_cash)
+            cap_room = max(0.0, equity * cfg.max_position_pct - current_mv)
+            notional = min(add_need, room, cap_room)
+            if notional < cfg.min_order_notional_usd:
+                continue
+            if cfg.auto_execute:
+                order = gw.trading.submit_order(
+                    order_data=MarketOrderRequest(
+                        symbol=sym,
+                        notional=round(notional, 2),
+                        side=OrderSide.BUY,
+                        time_in_force=TimeInForce.DAY,
+                    )
+                )
+                actions.append({"action": "BUY", "symbol": sym, "notional": notional, "order_id": str(order.id), "tag": "regime_overlay"})
+                cash -= notional
+
+    cycle["regime"] = regime
     cycle["executed_actions"] = actions
     cycle_path = engine.save_cycle(cycle)
     return {"cycle_path": str(cycle_path), "actions": actions}

@@ -1,0 +1,32 @@
+regime:
+  name: oil-shock
+  active: true
+  note: "Iran war escalation; oil regime shift"
+  oil_price_assumption: 108
+
+  tactical_overlays:
+    # Direct oil beta
+    - symbol: XLE
+      action: BUY
+      target_portfolio_pct: 0.06
+      rationale: "Direct energy producer exposure"
+    - symbol: OIH
+      action: BUY
+      target_portfolio_pct: 0.03
+      rationale: "Oil services torque"
+
+    # Indirect beneficiaries / hedges
+    - symbol: ITA
+      action: BUY
+      target_portfolio_pct: 0.03
+      rationale: "Defense spend/geopolitical premium"
+    - symbol: GLD
+      action: BUY
+      target_portfolio_pct: 0.03
+      rationale: "Inflation + geopolitical hedge"
+
+  funding:
+    trim_symbols:
+      - QQQ
+      - ARKK
+    trim_pct_each: 0.20
