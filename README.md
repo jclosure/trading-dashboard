@@ -39,6 +39,20 @@ Config file: `apex_config.yaml`
 Open `http://<your-mac-lan-ip>:8501` from any device on your network.
 (Example: `http://192.168.1.42:8501`)
 
+## Always-on service (macOS)
+
+The app is managed by LaunchAgent label `com.joel.trading-dashboard`.
+
+Useful commands:
+```bash
+launchctl kickstart -k gui/$(id -u)/com.joel.trading-dashboard
+launchctl print gui/$(id -u)/com.joel.trading-dashboard | grep -E "state =|pid =|last exit code"
+```
+
+Logs:
+- `logs/launchd.out.log`
+- `logs/launchd.err.log`
+
 ## Notes
 
 - Uses Alpaca Paper account (`paper=True`).
