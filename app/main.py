@@ -3,7 +3,19 @@ from __future__ import annotations
 import streamlit as st
 
 from app.alpaca_client import AlpacaGateway, load_config
-from app.analytics import aggregate_pl, alert_flags, build_positions_df, drawdown_from_history, exposure_stats, performance_stats
+import pandas as pd
+import plotly.express as px
+
+from app.analytics import (
+    aggregate_pl,
+    alert_flags,
+    build_blotter_df,
+    build_positions_df,
+    drawdown_from_history,
+    exposure_stats,
+    performance_stats,
+    symbol_attribution,
+)
 from app.ui import alerts_panel, exposure_chart, kpi_row, orders_table, portfolio_chart, positions_table, watchlist_quotes
 
 st.set_page_config(page_title="Loop + Joel Trading Dashboard", page_icon="📈", layout="wide")
@@ -95,8 +107,74 @@ with right:
     st.subheader("Watchlist Quotes")
     watchlist_quotes(quotes)
 
-st.subheader("Recent Orders")
-st.dataframe(recent_orders_df, use_container_width=True, hide_index=True)
+tabs = st.tabs(["Overview", "Trade Blotter", "Symbol Drilldown"])
+
+with tabs[0]:
+    st.subheader("Recent Orders")
+    st.dataframe(recent_orders_df, use_container_width=True, hide_index=True)
+
+with tabs[1]:
+    st.subheader("Trade Blotter")
+    blotter_df = build_blotter_df(recent_orders_df)
+    if blotter_df.empty:
+        st.info("No filled orders yet for blotter stats.")
+    else:
+        st.dataframe(
+            blotter_df[["Created", "Symbol", "Side", "Type", "Qty", "Filled Avg", "Signed Notional", "Status"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+        b1, b2 = st.columns(2)
+        b1.metric("Filled Trades", f"{len(blotter_df)}")
+        b2.metric("Turnover", f"${blotter_df['Abs Notional'].sum():,.2f}")
+
+with tabs[2]:
+    st.subheader("Symbol Drilldown")
+    blotter_df = build_blotter_df(recent_orders_df)
+    attrib_df = symbol_attribution(positions_df, blotter_df, pl["realized_est"])
+
+    if attrib_df.empty:
+        st.info("No symbol attribution data yet.")
+    else:
+        st.dataframe(
+            attrib_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Unrealized P/L": st.column_config.NumberColumn(format="$%.2f"),
+                "Realized P/L (est)": st.column_config.NumberColumn(format="$%.2f"),
+                "Total P/L (est)": st.column_config.NumberColumn(format="$%.2f"),
+                "Turnover": st.column_config.NumberColumn(format="$%.2f"),
+            },
+        )
+
+        fig_attr = px.bar(
+            attrib_df,
+            x="Symbol",
+            y="Total P/L (est)",
+            color="Total P/L (est)",
+            title="Estimated P/L by Symbol",
+        )
+        st.plotly_chart(fig_attr, use_container_width=True)
+
+        symbols = attrib_df["Symbol"].tolist()
+        selected = st.selectbox("Select symbol", symbols, index=0)
+        bars = gw.recent_bars(selected, limit=180)
+        bars_df = getattr(bars, "df", pd.DataFrame())
+        if not bars_df.empty:
+            if isinstance(bars_df.index, pd.MultiIndex):
+                bars_df = bars_df.reset_index()
+            else:
+                bars_df = bars_df.reset_index().rename(columns={bars_df.index.name or "index": "timestamp"})
+            if "symbol" in bars_df.columns:
+                bars_df = bars_df[bars_df["symbol"] == selected]
+            if "timestamp" in bars_df.columns:
+                bars_df["timestamp"] = pd.to_datetime(bars_df["timestamp"], utc=True).dt.tz_convert("America/Chicago")
+            if "close" in bars_df.columns and "timestamp" in bars_df.columns:
+                fig_px = px.line(bars_df, x="timestamp", y="close", title=f"{selected} recent minute bars")
+                st.plotly_chart(fig_px, use_container_width=True)
+        else:
+            st.info("No recent bars available for this symbol.")
 
 st.markdown(
     f"""

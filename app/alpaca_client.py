@@ -9,7 +9,8 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetOrdersRequest, GetPortfolioHistoryRequest
 from alpaca.trading.enums import QueryOrderStatus
 from alpaca.data.historical.stock import StockHistoricalDataClient
-from alpaca.data.requests import StockLatestQuoteRequest
+from alpaca.data.requests import StockLatestQuoteRequest, StockBarsRequest
+from alpaca.data.timeframe import TimeFrame
 
 
 @dataclass
@@ -61,3 +62,7 @@ class AlpacaGateway:
             return {}
         req = StockLatestQuoteRequest(symbol_or_symbols=syms)
         return self.data.get_stock_latest_quote(req)
+
+    def recent_bars(self, symbol: str, limit: int = 120):
+        req = StockBarsRequest(symbol_or_symbols=symbol.upper(), timeframe=TimeFrame.Minute, limit=limit)
+        return self.data.get_stock_bars(req)

@@ -67,14 +67,15 @@ def performance_stats(recent_orders_df: pd.DataFrame) -> dict:
     if recent_orders_df.empty:
         return {"fills": 0, "win_rate": None, "avg_win": None, "avg_loss": None}
 
-    # Approximation: classify by filled_avg_price relative to limit/stop/avg context is unavailable here.
-    # Use closed order day over day isn't directly available in this endpoint.
     filled = recent_orders_df[recent_orders_df["Status"].str.contains("filled", case=False, na=False)].copy()
     fills = len(filled)
     if fills == 0:
         return {"fills": 0, "win_rate": None, "avg_win": None, "avg_loss": None}
 
-    pnl_samples = pd.to_numeric(filled.get("Est P/L", pd.Series([np.nan] * fills)), errors="coerce").dropna()
+    if "Est P/L" not in filled.columns:
+        return {"fills": fills, "win_rate": None, "avg_win": None, "avg_loss": None}
+
+    pnl_samples = pd.to_numeric(filled["Est P/L"], errors="coerce").dropna()
     if pnl_samples.empty:
         return {"fills": fills, "win_rate": None, "avg_win": None, "avg_loss": None}
 
@@ -88,6 +89,51 @@ def performance_stats(recent_orders_df: pd.DataFrame) -> dict:
         "avg_win": wins.mean() if len(wins) else None,
         "avg_loss": losses.mean() if len(losses) else None,
     }
+
+
+def build_blotter_df(orders_df: pd.DataFrame) -> pd.DataFrame:
+    if orders_df.empty:
+        return orders_df
+    df = orders_df.copy()
+    filled_mask = df["Status"].str.contains("filled", case=False, na=False)
+    df = df[filled_mask].copy()
+    if df.empty:
+        return df
+    qty = pd.to_numeric(df["Qty"], errors="coerce").fillna(0)
+    px = pd.to_numeric(df["Filled Avg"], errors="coerce")
+    signed = qty * px
+    signed[df["Side"].str.contains("sell", case=False, na=False)] *= -1
+    df["Signed Notional"] = signed
+    df["Abs Notional"] = signed.abs()
+    return df.sort_values("Created", ascending=False)
+
+
+def symbol_attribution(positions_df: pd.DataFrame, blotter_df: pd.DataFrame, realized_total_est: float) -> pd.DataFrame:
+    symbols = set()
+    if not positions_df.empty:
+        symbols.update(positions_df["symbol"].unique().tolist())
+    if not blotter_df.empty:
+        symbols.update(blotter_df["Symbol"].unique().tolist())
+
+    rows = []
+    total_notional = blotter_df["Abs Notional"].sum() if (not blotter_df.empty and "Abs Notional" in blotter_df.columns) else 0.0
+    for s in sorted(symbols):
+        unreal = 0.0
+        if not positions_df.empty and s in positions_df["symbol"].values:
+            unreal = float(positions_df.loc[positions_df["symbol"] == s, "unrealized_pl"].sum())
+
+        sym_notional = 0.0
+        if not blotter_df.empty and s in blotter_df["Symbol"].values and "Abs Notional" in blotter_df.columns:
+            sym_notional = float(blotter_df.loc[blotter_df["Symbol"] == s, "Abs Notional"].sum())
+
+        realized_est = (sym_notional / total_notional * realized_total_est) if total_notional > 0 else 0.0
+        rows.append({"Symbol": s, "Unrealized P/L": unreal, "Realized P/L (est)": realized_est, "Turnover": sym_notional})
+
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        out["Total P/L (est)"] = out["Unrealized P/L"] + out["Realized P/L (est)"]
+        out = out.sort_values("Total P/L (est)", ascending=False)
+    return out
 
 
 def drawdown_from_history(history) -> dict:
