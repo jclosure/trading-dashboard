@@ -23,6 +23,19 @@ cp .env.example .env   # optional if env vars already exported
 streamlit run app/main.py --server.address 0.0.0.0 --server.port 8501
 ```
 
+## APEX automation
+
+```bash
+cd ~/projects/trading-dashboard
+source .venv/bin/activate
+PYTHONPATH=. python auto_rebalance.py
+PYTHONPATH=. python monthly_review.py
+```
+
+Config file: `apex_config.yaml`
+- `auto_execute: true` means paper orders are actually submitted.
+- Keep `paper_trading` credentials only.
+
 Open `http://<your-mac-lan-ip>:8501` from any device on your network.
 (Example: `http://192.168.1.42:8501`)
 

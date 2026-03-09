@@ -1,0 +1,11 @@
+apex:
+  enabled: true
+  paper_trading: true
+  auto_execute: true
+  max_position_pct: 0.15
+  cash_floor_pct: 0.08
+  trim_bottom_quartile_pct: 0.25
+  add_top_quartile_pct: 0.10
+  min_order_notional_usd: 50
+  symbols_allowlist: []
+  symbols_blocklist: []

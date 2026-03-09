@@ -7,9 +7,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from alpaca_client import AlpacaGateway
-from analytics import build_positions_df
-from ui import orders_table
+from app.alpaca_client import AlpacaGateway
+from app.analytics import build_positions_df
 
 
 @dataclass
