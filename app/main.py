@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import streamlit as st
 
-from app.alpaca_client import AlpacaGateway, load_config
+from alpaca_client import AlpacaGateway, load_config
 import pandas as pd
 import plotly.express as px
 
-from app.analytics import (
+from analytics import (
     aggregate_pl,
     alert_flags,
     build_blotter_df,
@@ -16,7 +16,7 @@ from app.analytics import (
     performance_stats,
     symbol_attribution,
 )
-from app.ui import alerts_panel, exposure_chart, kpi_row, orders_table, portfolio_chart, positions_table, watchlist_quotes
+from ui import alerts_panel, exposure_chart, kpi_row, orders_table, portfolio_chart, positions_table, watchlist_quotes
 
 st.set_page_config(page_title="Loop + Joel Trading Dashboard", page_icon="📈", layout="wide")
 
