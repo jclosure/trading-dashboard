@@ -16,7 +16,17 @@ from analytics import (
     performance_stats,
     symbol_attribution,
 )
-from ui import alerts_panel, exposure_chart, kpi_row, orders_table, portfolio_chart, positions_table, watchlist_quotes
+from ui import (
+    alerts_panel,
+    docs_reference_panel,
+    exposure_chart,
+    important_highlights_panel,
+    kpi_row,
+    orders_table,
+    portfolio_chart,
+    positions_table,
+    watchlist_quotes,
+)
 
 st.set_page_config(page_title="Loop + Joel Trading Dashboard", page_icon="📈", layout="wide")
 
@@ -74,6 +84,7 @@ with c1:
     st.subheader("Portfolio")
     portfolio_chart(history)
 with c2:
+    important_highlights_panel(pl, exposure, dd, perf, len(open_orders))
     alerts_panel(alerts)
 
 st.subheader("Positions")
@@ -107,7 +118,7 @@ with right:
     st.subheader("Watchlist Quotes")
     watchlist_quotes(quotes)
 
-tabs = st.tabs(["Overview", "Trade Blotter", "Symbol Drilldown"])
+tabs = st.tabs(["Overview", "Trade Blotter", "Symbol Drilldown", "Reference"])
 
 with tabs[0]:
     st.subheader("Recent Orders")
@@ -175,6 +186,9 @@ with tabs[2]:
                 st.plotly_chart(fig_px, use_container_width=True)
         else:
             st.info("No recent bars available for this symbol.")
+
+with tabs[3]:
+    docs_reference_panel()
 
 st.markdown(
     f"""

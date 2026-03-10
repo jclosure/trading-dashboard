@@ -116,3 +116,95 @@ def alerts_panel(alerts: list[str]):
         return
     for a in alerts:
         st.warning(a)
+
+
+def important_highlights_panel(pl: dict, exposure: dict, drawdown: dict, perf: dict, open_orders_count: int):
+    st.subheader("Important Highlights")
+
+    notes: list[tuple[str, str]] = []
+
+    day_total = float(pl.get("day_total", 0.0))
+    gross_pct = float(exposure.get("gross_pct", 0.0))
+    dd = float(drawdown.get("max_drawdown", 0.0))
+    fills = int(perf.get("fills") or 0)
+    win_rate = perf.get("win_rate")
+
+    if day_total <= 0:
+        notes.append(("bad", f"Day P/L is negative (${day_total:,.2f}). Keep risk tight until momentum improves."))
+    else:
+        notes.append(("good", f"Day P/L is positive (${day_total:,.2f}). Protect gains, avoid overtrading."))
+
+    if gross_pct > 120:
+        notes.append(("bad", f"Gross exposure is elevated at {gross_pct:.1f}% of equity."))
+    elif gross_pct < 60:
+        notes.append(("good", f"Gross exposure is moderate at {gross_pct:.1f}% of equity."))
+
+    if dd < -3:
+        notes.append(("bad", f"Intraday drawdown reached {dd:.2f}%. This is a caution zone."))
+    elif dd > -1:
+        notes.append(("good", f"Intraday drawdown is contained ({dd:.2f}%)."))
+
+    if fills >= 20 and win_rate is not None:
+        if win_rate >= 55:
+            notes.append(("good", f"Sample win rate is {win_rate:.1f}% across {fills} filled orders."))
+        elif win_rate < 45:
+            notes.append(("bad", f"Sample win rate is {win_rate:.1f}% across {fills} filled orders."))
+
+    if open_orders_count > 0:
+        notes.append(("neutral", f"{open_orders_count} open order(s) waiting for fills."))
+
+    if not notes:
+        st.info("No major temporary signal yet. Market state is neutral.")
+        return
+
+    for level, msg in notes[:4]:
+        if level == "good":
+            st.success(msg)
+        elif level == "bad":
+            st.warning(msg)
+        else:
+            st.info(msg)
+
+
+def docs_reference_panel():
+    st.subheader("Quick Reference")
+    st.caption("Simple definitions for common dashboard fields. Docs: [Alpaca Orders](https://docs.alpaca.markets/docs/trading/orders), [Order Lifecycle](https://docs.alpaca.markets/docs/trading/orders/#order-lifecycle)")
+
+    st.markdown("""
+**Account KPIs**
+- **Equity**: total account value right now.
+- **Buying Power**: how much you can deploy for new trades.
+- **Cash**: uninvested cash balance.
+- **Day P/L**: change vs previous day close.
+
+**Positions**
+- **Market Value**: current dollar value of a position.
+- **Cost Basis**: total cost paid for current shares.
+- **Unrealized P/L**: profit or loss if closed now.
+- **Unrealized P/L %**: unrealized P/L as a percentage.
+- **Avg Entry**: average entry price.
+- **Current Price**: latest market price.
+
+**Orders / Blotter**
+- **Created**: when the order was submitted.
+- **Symbol**: ticker (AAPL, TSLA, etc.).
+- **Side**: buy or sell.
+- **Type**: market, limit, stop, etc.
+- **Status**: new, partially filled, filled, canceled, rejected.
+- **Qty**: number of shares.
+- **Notional**: target dollar amount instead of share qty.
+- **Limit**: max buy price or min sell price for a limit order.
+- **Filled Avg**: average execution price of fills.
+- **Signed Notional**: trade value with sign (+ buy, - sell).
+- **Turnover**: total traded notional over the sample.
+
+**Risk / Exposure**
+- **Gross Exposure**: total absolute capital deployed.
+- **Net Exposure**: long exposure minus short exposure.
+- **Max Drawdown (intraday)**: worst peak-to-trough drop during the day.
+
+**Performance sample**
+- **Filled Orders**: count of filled orders in sample window.
+- **Win Rate**: percent of positive estimated outcomes in sample.
+- **Avg Win / Avg Loss**: mean gain/loss for sample trades.
+""")
