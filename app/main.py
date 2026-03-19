@@ -63,13 +63,6 @@ alerts = alert_flags(pl, exposure, dd, float(account.equity))
 last_equity = float(account.last_equity)
 day_pl_pct = (pl["day_total"] / last_equity * 100) if last_equity else 0.0
 
-if pl["day_total"] > 0:
-    st.success(f"Simple answer: You are up ${pl['day_total']:,.2f} today ({day_pl_pct:+.2f}%).")
-elif pl["day_total"] < 0:
-    st.warning(f"Simple answer: You are down ${abs(pl['day_total']):,.2f} today ({day_pl_pct:+.2f}%).")
-else:
-    st.info("Simple answer: You are flat today ($0.00, +0.00%).")
-
 kpi_row(account)
 
 st.metric(
