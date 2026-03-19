@@ -12,10 +12,27 @@ def kpi_row(account) -> None:
     pct = (delta / last_equity * 100) if last_equity else 0.0
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Equity", f"${equity:,.2f}", f"{pct:+.2f}%")
-    c2.metric("Buying Power", f"${float(account.buying_power):,.2f}")
-    c3.metric("Cash", f"${float(account.cash):,.2f}")
-    c4.metric("P/L Today (net)", f"${delta:,.2f}")
+    c1.metric(
+        "Equity",
+        f"${equity:,.2f}",
+        f"{pct:+.2f}%",
+        help="Your total account value right now. If all positions were closed, this is about what the account is worth.",
+    )
+    c2.metric(
+        "Buying Power",
+        f"${float(account.buying_power):,.2f}",
+        help="How much money you can use for new trades at this moment.",
+    )
+    c3.metric(
+        "Cash",
+        f"${float(account.cash):,.2f}",
+        help="Money sitting in the account that is not currently invested in positions.",
+    )
+    c4.metric(
+        "P/L Today (net)",
+        f"${delta:,.2f}",
+        help="How much your account is up or down today compared with yesterday's close.",
+    )
 
 
 def positions_table(positions_df: pd.DataFrame) -> pd.DataFrame:

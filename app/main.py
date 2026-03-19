@@ -63,31 +63,76 @@ alerts = alert_flags(pl, exposure, dd, float(account.equity))
 last_equity = float(account.last_equity)
 day_pl_pct = (pl["day_total"] / last_equity * 100) if last_equity else 0.0
 
+if pl["day_total"] > 0:
+    st.success(f"Simple answer: You are up ${pl['day_total']:,.2f} today ({day_pl_pct:+.2f}%).")
+elif pl["day_total"] < 0:
+    st.warning(f"Simple answer: You are down ${abs(pl['day_total']):,.2f} today ({day_pl_pct:+.2f}%).")
+else:
+    st.info("Simple answer: You are flat today ($0.00, +0.00%).")
+
 kpi_row(account)
 
 st.metric(
     "Simple answer: Net P/L today",
     f"${pl['day_total']:,.2f}",
     f"{day_pl_pct:+.2f}% vs previous close",
-    help="This is your total account change since previous close (realized + unrealized). Positive means up, negative means down.",
+    help="The one-number answer. This is your full account change since yesterday's close. Positive means you made money. Negative means you lost money.",
 )
 
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Realized P/L (est)", f"${pl['realized_est']:,.2f}")
-m2.metric("Unrealized P/L", f"${pl['unrealized']:,.2f}")
-m3.metric("Gross Exposure", f"${exposure['gross']:,.2f}", f"{exposure['gross_pct']:.1f}% of eq")
-m4.metric("Net Exposure", f"${exposure['net']:,.2f}", f"{exposure['net_pct']:.1f}% of eq")
+m1.metric(
+    "Realized P/L (est)",
+    f"${pl['realized_est']:,.2f}",
+    help="Estimated profit or loss from trades that were effectively closed today.",
+)
+m2.metric(
+    "Unrealized P/L",
+    f"${pl['unrealized']:,.2f}",
+    help="Profit or loss on open positions if you sold them right now.",
+)
+m3.metric(
+    "Gross Exposure",
+    f"${exposure['gross']:,.2f}",
+    f"{exposure['gross_pct']:.1f}% of eq",
+    help="Total dollars currently in positions, ignoring direction. Bigger means more capital at risk.",
+)
+m4.metric(
+    "Net Exposure",
+    f"${exposure['net']:,.2f}",
+    f"{exposure['net_pct']:.1f}% of eq",
+    help="Long exposure minus short exposure. Positive means net long, negative means net short.",
+)
 
 n1, n2, n3, n4 = st.columns(4)
 wr = "n/a" if perf["win_rate"] is None else f"{perf['win_rate']:.1f}%"
 aw = "n/a" if perf["avg_win"] is None else f"${perf['avg_win']:,.2f}"
 al = "n/a" if perf["avg_loss"] is None else f"${perf['avg_loss']:,.2f}"
-n1.metric("Filled Orders (sample)", f"{perf['fills']}")
-n2.metric("Win Rate (sample)", wr)
-n3.metric("Avg Win (sample)", aw)
-n4.metric("Avg Loss (sample)", al)
+n1.metric(
+    "Filled Orders (sample)",
+    f"{perf['fills']}",
+    help="How many orders in this sample window were actually executed.",
+)
+n2.metric(
+    "Win Rate (sample)",
+    wr,
+    help="Percent of sampled outcomes that were positive. Higher is generally better.",
+)
+n3.metric(
+    "Avg Win (sample)",
+    aw,
+    help="Average dollar gain for winning sampled trades.",
+)
+n4.metric(
+    "Avg Loss (sample)",
+    al,
+    help="Average dollar loss for losing sampled trades.",
+)
 
-st.metric("Max Drawdown (intraday)", f"{dd['max_drawdown']:.2f}%")
+st.metric(
+    "Max Drawdown (intraday)",
+    f"{dd['max_drawdown']:.2f}%",
+    help="Worst drop from a high point to a low point in your equity during today.",
+)
 
 c1, c2 = st.columns([2, 1])
 with c1:
@@ -146,8 +191,16 @@ with tabs[1]:
             hide_index=True,
         )
         b1, b2 = st.columns(2)
-        b1.metric("Filled Trades", f"{len(blotter_df)}")
-        b2.metric("Turnover", f"${blotter_df['Abs Notional'].sum():,.2f}")
+        b1.metric(
+            "Filled Trades",
+            f"{len(blotter_df)}",
+            help="Number of completed trades in this blotter view.",
+        )
+        b2.metric(
+            "Turnover",
+            f"${blotter_df['Abs Notional'].sum():,.2f}",
+            help="Total dollars traded in the sample period. It measures activity, not profit.",
+        )
 
 with tabs[2]:
     st.subheader("Symbol Drilldown")
