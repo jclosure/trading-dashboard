@@ -60,7 +60,17 @@ dd = drawdown_from_history(history)
 perf = performance_stats(recent_orders_df)
 alerts = alert_flags(pl, exposure, dd, float(account.equity))
 
+last_equity = float(account.last_equity)
+day_pl_pct = (pl["day_total"] / last_equity * 100) if last_equity else 0.0
+
 kpi_row(account)
+
+st.metric(
+    "Simple answer: Net P/L today",
+    f"${pl['day_total']:,.2f}",
+    f"{day_pl_pct:+.2f}% vs previous close",
+    help="This is your total account change since previous close (realized + unrealized). Positive means up, negative means down.",
+)
 
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Realized P/L (est)", f"${pl['realized_est']:,.2f}")

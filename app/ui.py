@@ -15,7 +15,7 @@ def kpi_row(account) -> None:
     c1.metric("Equity", f"${equity:,.2f}", f"{pct:+.2f}%")
     c2.metric("Buying Power", f"${float(account.buying_power):,.2f}")
     c3.metric("Cash", f"${float(account.cash):,.2f}")
-    c4.metric("Day P/L", f"${delta:,.2f}")
+    c4.metric("P/L Today (net)", f"${delta:,.2f}")
 
 
 def positions_table(positions_df: pd.DataFrame) -> pd.DataFrame:
