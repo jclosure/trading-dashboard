@@ -68,6 +68,57 @@ wr = "n/a" if perf["win_rate"] is None else f"{perf['win_rate']:.1f}%"
 aw = "n/a" if perf["avg_win"] is None else f"${perf['avg_win']:,.2f}"
 al = "n/a" if perf["avg_loss"] is None else f"${perf['avg_loss']:,.2f}"
 
+mode = st.sidebar.radio(
+    "Dashboard mode",
+    options=["Basic", "Pro"],
+    index=0,
+    help="Basic keeps only the essentials. Pro shows full analytics and execution detail.",
+)
+
+if mode == "Basic":
+    st.subheader("Simple dashboard")
+    st.metric(
+        "Simple answer: Net P/L today",
+        f"${pl['day_total']:,.2f}",
+        f"{day_pl_pct:+.2f}% vs previous close",
+        help="Your total account change since yesterday's close.",
+    )
+
+    b1, b2, b3, b4 = st.columns(4)
+    b1.metric("Equity", f"${float(account.equity):,.2f}", help="Total account value right now.")
+    b2.metric("Cash", f"${float(account.cash):,.2f}", help="Uninvested money currently in the account.")
+    b3.metric("Open positions", f"{len(positions)}", help="How many symbols you currently hold.")
+    b4.metric("Open orders", f"{len(open_orders)}", help="Orders submitted but not fully filled yet.")
+
+    if daily_history and getattr(daily_history, "timestamp", None) and getattr(daily_history, "equity", None):
+        basic_df = pd.DataFrame({"timestamp": daily_history.timestamp, "equity": daily_history.equity})
+        basic_df = basic_df[pd.to_numeric(basic_df["equity"], errors="coerce") > 0].copy()
+        if len(basic_df) >= 2:
+            basic_df["time"] = pd.to_datetime(basic_df["timestamp"], unit="s", utc=True).dt.tz_convert("America/Chicago")
+            basic_df = basic_df.sort_values("time").tail(10)
+
+            start_eq = float(basic_df["equity"].iloc[0])
+            end_eq = float(basic_df["equity"].iloc[-1])
+            change_10d = end_eq - start_eq
+            change_10d_pct = (change_10d / start_eq * 100) if start_eq else 0.0
+
+            c1, c2 = st.columns([1, 2])
+            c1.metric(
+                "P/L (last 10 trading days)",
+                f"${change_10d:,.2f}",
+                f"{change_10d_pct:+.2f}%",
+                help="How much the account changed over the last 10 trading days shown.",
+            )
+            with c2:
+                fig_basic = px.line(basic_df, x="time", y="equity", title="Equity, last 10 trading days")
+                fig_basic.update_layout(height=260, margin=dict(l=20, r=20, t=50, b=20))
+                st.plotly_chart(fig_basic, use_container_width=True)
+
+    st.subheader("Risk alerts")
+    alerts_panel(alerts)
+    st.caption("Switch to Pro mode in the sidebar for positions, execution details, and drilldowns.")
+    st.stop()
+
 views = st.tabs(["Home", "Positions & Risk", "Execution", "Insights", "Reference"])
 
 with views[0]:
