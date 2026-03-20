@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import json
 
 import yaml
 
@@ -24,6 +26,12 @@ class ExecConfig:
     min_order_notional_usd: float
     allowlist: list[str]
     blocklist: list[str]
+    take_profit_tier1_pct: float
+    take_profit_tier1_sell_pct: float
+    take_profit_tier2_pct: float
+    take_profit_tier2_sell_pct: float
+    take_profit_trailing_pullback_pct: float
+    take_profit_trailing_sell_pct: float
 
 
 def load_exec_config(path: str | Path = "apex_config.yaml") -> ExecConfig:
@@ -38,6 +46,12 @@ def load_exec_config(path: str | Path = "apex_config.yaml") -> ExecConfig:
         min_order_notional_usd=float(a.get("min_order_notional_usd", 50)),
         allowlist=[s.upper() for s in a.get("symbols_allowlist", [])],
         blocklist=[s.upper() for s in a.get("symbols_blocklist", [])],
+        take_profit_tier1_pct=float(a.get("take_profit_tier1_pct", 0.08)),
+        take_profit_tier1_sell_pct=float(a.get("take_profit_tier1_sell_pct", 0.25)),
+        take_profit_tier2_pct=float(a.get("take_profit_tier2_pct", 0.15)),
+        take_profit_tier2_sell_pct=float(a.get("take_profit_tier2_sell_pct", 0.25)),
+        take_profit_trailing_pullback_pct=float(a.get("take_profit_trailing_pullback_pct", 0.06)),
+        take_profit_trailing_sell_pct=float(a.get("take_profit_trailing_sell_pct", 0.25)),
     )
 
 
@@ -55,6 +69,22 @@ def load_regime_overrides(path: str | Path = "apex_overrides.yaml") -> dict[str,
         return {}
     raw = yaml.safe_load(Path(path).read_text()) or {}
     return raw.get("regime", {})
+
+
+def load_take_profit_state(path: str | Path = "logs/take-profit-state.json") -> dict[str, Any]:
+    p = Path(path)
+    if not p.exists():
+        return {"symbols": {}}
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return {"symbols": {}}
+
+
+def save_take_profit_state(state: dict[str, Any], path: str | Path = "logs/take-profit-state.json") -> None:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(state, indent=2, sort_keys=True))
 
 
 def run_once() -> dict[str, Any]:
@@ -75,7 +105,61 @@ def run_once() -> dict[str, Any]:
         str(r["symbol"]).upper(): float(r["market_value"]) for _, r in positions_df.iterrows()
     } if not positions_df.empty else {}
 
+    tp_state = load_take_profit_state()
+    tp_symbols = tp_state.setdefault("symbols", {})
+
     actions = []
+
+    # Explicit take-profit ladder + trailing pullback protection
+    if not positions_df.empty:
+        for _, r in positions_df.iterrows():
+            sym = str(r["symbol"]).upper()
+            if not symbol_allowed(sym, cfg):
+                continue
+
+            qty = float(r.get("qty", 0.0) or 0.0)
+            mv = float(r.get("market_value", 0.0) or 0.0)
+            if qty <= 0 or mv < cfg.min_order_notional_usd:
+                continue
+
+            plpc = float(r.get("unrealized_pl_pct", 0.0) or 0.0) / 100.0
+            s = tp_symbols.setdefault(sym, {"tier": 0, "peak_plpc": plpc, "last_qty": qty, "trail_done": False})
+
+            # Reset tier if position size grows materially (new capital added)
+            if qty > float(s.get("last_qty", qty)) * 1.05:
+                s["tier"] = 0
+                s["trail_done"] = False
+
+            s["peak_plpc"] = max(float(s.get("peak_plpc", plpc)), plpc)
+            s["last_qty"] = qty
+
+            def submit_sell(notional: float, reason: str, tag: str):
+                if notional < cfg.min_order_notional_usd:
+                    return
+                if cfg.auto_execute:
+                    order = gw.trading.submit_order(
+                        order_data=MarketOrderRequest(
+                            symbol=sym,
+                            notional=round(notional, 2),
+                            side=OrderSide.SELL,
+                            time_in_force=TimeInForce.DAY,
+                        )
+                    )
+                    actions.append({"action": "SELL", "symbol": sym, "notional": notional, "order_id": str(order.id), "tag": tag, "reason": reason})
+
+            if int(s.get("tier", 0)) < 1 and plpc >= cfg.take_profit_tier1_pct:
+                submit_sell(mv * cfg.take_profit_tier1_sell_pct, "Take-profit tier 1 hit", "take_profit_tier1")
+                s["tier"] = 1
+            elif int(s.get("tier", 0)) < 2 and plpc >= cfg.take_profit_tier2_pct:
+                submit_sell(mv * cfg.take_profit_tier2_sell_pct, "Take-profit tier 2 hit", "take_profit_tier2")
+                s["tier"] = 2
+
+            peak = float(s.get("peak_plpc", plpc))
+            pulled_back = peak - plpc
+            if int(s.get("tier", 0)) >= 2 and not bool(s.get("trail_done", False)) and pulled_back >= cfg.take_profit_trailing_pullback_pct:
+                submit_sell(mv * cfg.take_profit_trailing_sell_pct, "Trailing pullback after tier 2", "take_profit_trailing")
+                s["trail_done"] = True
+
     for rec in cycle.get("recommendations", []):
         sym = rec["symbol"].upper()
         if not symbol_allowed(sym, cfg):
@@ -166,6 +250,15 @@ def run_once() -> dict[str, Any]:
     cycle["regime"] = regime
     cycle["executed_actions"] = actions
     cycle_path = engine.save_cycle(cycle)
+
+    # keep take-profit state tidy for symbols no longer held
+    held = set(mv_by_symbol.keys())
+    for sym in list(tp_symbols.keys()):
+        if sym not in held:
+            tp_symbols.pop(sym, None)
+    tp_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    save_take_profit_state(tp_state)
+
     return {"cycle_path": str(cycle_path), "actions": actions}
 
 

@@ -159,6 +159,40 @@ if daily_history and getattr(daily_history, "timestamp", None) and getattr(daily
 else:
     st.info("No daily portfolio history available yet.")
 
+st.subheader("Realized Gains Activity")
+filled_df = recent_orders_df.copy()
+if not filled_df.empty:
+    filled_df = filled_df[
+        filled_df["Status"].astype(str).str.contains("filled", case=False, na=False)
+        & filled_df["Side"].astype(str).str.contains("sell", case=False, na=False)
+    ].copy()
+
+if not filled_df.empty:
+    filled_df["CreatedDT"] = pd.to_datetime(filled_df["Created"], errors="coerce", utc=True)
+    cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=14)
+    recent_sells = filled_df[filled_df["CreatedDT"] >= cutoff].copy()
+
+    if not recent_sells.empty:
+        recent_sells["QtyNum"] = pd.to_numeric(recent_sells["Qty"], errors="coerce").fillna(0)
+        recent_sells["PriceNum"] = pd.to_numeric(recent_sells["Filled Avg"], errors="coerce").fillna(0)
+        recent_sells["Sell Notional"] = recent_sells["QtyNum"] * recent_sells["PriceNum"]
+
+        r1, r2 = st.columns(2)
+        r1.metric(
+            "Profit-taking sells (last 14 days)",
+            f"{len(recent_sells)}",
+            help="How many completed sell orders happened in the last 14 days.",
+        )
+        r2.metric(
+            "Sell notional (last 14 days)",
+            f"${recent_sells['Sell Notional'].sum():,.2f}",
+            help="Total dollar amount sold in the last 14 days. This is execution volume, not net profit by itself.",
+        )
+    else:
+        st.info("No filled sell orders in the last 14 days yet.")
+else:
+    st.info("No filled sell orders available yet.")
+
 c1, c2 = st.columns([2, 1])
 with c1:
     st.subheader("Portfolio")

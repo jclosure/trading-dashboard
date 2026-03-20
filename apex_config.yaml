@@ -9,3 +9,12 @@ apex:
   min_order_notional_usd: 50
   symbols_allowlist: []
   symbols_blocklist: []
+
+  # Profit-taking ladder
+  take_profit_tier1_pct: 0.08
+  take_profit_tier1_sell_pct: 0.25
+  take_profit_tier2_pct: 0.15
+  take_profit_tier2_sell_pct: 0.25
+  # After tier 2, if unrealized gain pulls back this much from peak, de-risk further
+  take_profit_trailing_pullback_pct: 0.06
+  take_profit_trailing_sell_pct: 0.25
