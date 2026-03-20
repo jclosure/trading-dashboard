@@ -52,8 +52,8 @@ class AlpacaGateway:
         req = GetOrdersRequest(status=QueryOrderStatus.ALL, limit=limit, nested=False)
         return self.trading.get_orders(filter=req)
 
-    def portfolio_history(self):
-        req = GetPortfolioHistoryRequest(period="1D", timeframe="5Min", extended_hours=True)
+    def portfolio_history(self, period: str = "1D", timeframe: str = "5Min", extended_hours: bool = True):
+        req = GetPortfolioHistoryRequest(period=period, timeframe=timeframe, extended_hours=extended_hours)
         return self.trading.get_portfolio_history(history_filter=req)
 
     def latest_quotes(self, symbols: Iterable[str]):

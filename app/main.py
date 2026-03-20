@@ -48,7 +48,8 @@ account = gw.account()
 positions = gw.positions()
 open_orders = gw.open_orders()
 recent_orders = gw.recent_orders(limit=200)
-history = gw.portfolio_history()
+history = gw.portfolio_history(period="1D", timeframe="5Min", extended_hours=True)
+daily_history = gw.portfolio_history(period="1M", timeframe="1D", extended_hours=True)
 tracked = sorted(set(cfg.watchlist + [p.symbol for p in positions]))
 quotes = gw.latest_quotes(tracked)
 
@@ -126,6 +127,37 @@ st.metric(
     f"{dd['max_drawdown']:.2f}%",
     help="Worst drop from a high point to a low point in your equity during today.",
 )
+
+st.subheader("Last 10 Trading Days")
+if daily_history and getattr(daily_history, "timestamp", None) and getattr(daily_history, "equity", None):
+    daily_df = pd.DataFrame({"timestamp": daily_history.timestamp, "equity": daily_history.equity})
+    daily_df = daily_df[pd.to_numeric(daily_df["equity"], errors="coerce") > 0].copy()
+
+    if len(daily_df) >= 2:
+        daily_df["time"] = pd.to_datetime(daily_df["timestamp"], unit="s", utc=True).dt.tz_convert("America/Chicago")
+        daily_df = daily_df.sort_values("time").tail(10)
+
+        start_eq = float(daily_df["equity"].iloc[0])
+        end_eq = float(daily_df["equity"].iloc[-1])
+        change_10d = end_eq - start_eq
+        change_10d_pct = (change_10d / start_eq * 100) if start_eq else 0.0
+
+        t1, t2 = st.columns([1, 2])
+        t1.metric(
+            "P/L (last 10 trading days)",
+            f"${change_10d:,.2f}",
+            f"{change_10d_pct:+.2f}%",
+            help="How much your account changed from the first to the most recent day in this 10-day view.",
+        )
+
+        with t2:
+            fig_10d = px.line(daily_df, x="time", y="equity", title="Equity, last 10 trading days")
+            fig_10d.update_layout(height=250, margin=dict(l=20, r=20, t=50, b=20))
+            st.plotly_chart(fig_10d, use_container_width=True)
+    else:
+        st.info("Not enough daily history yet to show a 10-day P/L trend.")
+else:
+    st.info("No daily portfolio history available yet.")
 
 c1, c2 = st.columns([2, 1])
 with c1:
