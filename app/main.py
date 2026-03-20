@@ -159,40 +159,6 @@ if daily_history and getattr(daily_history, "timestamp", None) and getattr(daily
 else:
     st.info("No daily portfolio history available yet.")
 
-st.subheader("Realized Gains Activity")
-filled_df = recent_orders_df.copy()
-if not filled_df.empty:
-    filled_df = filled_df[
-        filled_df["Status"].astype(str).str.contains("filled", case=False, na=False)
-        & filled_df["Side"].astype(str).str.contains("sell", case=False, na=False)
-    ].copy()
-
-if not filled_df.empty:
-    filled_df["CreatedDT"] = pd.to_datetime(filled_df["Created"], errors="coerce", utc=True)
-    cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=14)
-    recent_sells = filled_df[filled_df["CreatedDT"] >= cutoff].copy()
-
-    if not recent_sells.empty:
-        recent_sells["QtyNum"] = pd.to_numeric(recent_sells["Qty"], errors="coerce").fillna(0)
-        recent_sells["PriceNum"] = pd.to_numeric(recent_sells["Filled Avg"], errors="coerce").fillna(0)
-        recent_sells["Sell Notional"] = recent_sells["QtyNum"] * recent_sells["PriceNum"]
-
-        r1, r2 = st.columns(2)
-        r1.metric(
-            "Profit-taking sells (last 14 days)",
-            f"{len(recent_sells)}",
-            help="How many completed sell orders happened in the last 14 days.",
-        )
-        r2.metric(
-            "Sell notional (last 14 days)",
-            f"${recent_sells['Sell Notional'].sum():,.2f}",
-            help="Total dollar amount sold in the last 14 days. This is execution volume, not net profit by itself.",
-        )
-    else:
-        st.info("No filled sell orders in the last 14 days yet.")
-else:
-    st.info("No filled sell orders available yet.")
-
 c1, c2 = st.columns([2, 1])
 with c1:
     st.subheader("Portfolio")
@@ -232,7 +198,7 @@ with right:
     st.subheader("Watchlist Quotes")
     watchlist_quotes(quotes)
 
-tabs = st.tabs(["Overview", "Trade Blotter", "Symbol Drilldown", "Reference"])
+tabs = st.tabs(["Overview", "Trade Blotter", "Symbol Drilldown", "Realized Activity", "Reference"])
 
 with tabs[0]:
     st.subheader("Recent Orders")
@@ -310,6 +276,83 @@ with tabs[2]:
             st.info("No recent bars available for this symbol.")
 
 with tabs[3]:
+    st.subheader("Realized Gains Activity")
+    days = st.slider(
+        "Lookback window (days)",
+        min_value=3,
+        max_value=60,
+        value=14,
+        step=1,
+        help="Choose how far back to analyze sells and account profit.",
+    )
+
+    # Filled sell activity in selected window
+    filled_df = recent_orders_df.copy()
+    if not filled_df.empty:
+        filled_df = filled_df[
+            filled_df["Status"].astype(str).str.contains("filled", case=False, na=False)
+            & filled_df["Side"].astype(str).str.contains("sell", case=False, na=False)
+        ].copy()
+
+    sell_count = 0
+    sell_notional = 0.0
+    avg_sell_size = 0.0
+
+    if not filled_df.empty:
+        filled_df["CreatedDT"] = pd.to_datetime(filled_df["Created"], errors="coerce", utc=True)
+        cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=days)
+        recent_sells = filled_df[filled_df["CreatedDT"] >= cutoff].copy()
+
+        if not recent_sells.empty:
+            recent_sells["QtyNum"] = pd.to_numeric(recent_sells["Qty"], errors="coerce").fillna(0)
+            recent_sells["PriceNum"] = pd.to_numeric(recent_sells["Filled Avg"], errors="coerce").fillna(0)
+            recent_sells["Sell Notional"] = recent_sells["QtyNum"] * recent_sells["PriceNum"]
+            sell_count = int(len(recent_sells))
+            sell_notional = float(recent_sells["Sell Notional"].sum())
+            avg_sell_size = float(recent_sells["Sell Notional"].mean()) if sell_count else 0.0
+
+    # Net account profit in selected window (clear + noob-friendly)
+    window_profit = 0.0
+    window_profit_pct = 0.0
+    if daily_history and getattr(daily_history, "timestamp", None) and getattr(daily_history, "equity", None):
+        hist_df = pd.DataFrame({"timestamp": daily_history.timestamp, "equity": daily_history.equity})
+        hist_df = hist_df[pd.to_numeric(hist_df["equity"], errors="coerce") > 0].copy()
+        if not hist_df.empty:
+            hist_df["time"] = pd.to_datetime(hist_df["timestamp"], unit="s", utc=True)
+            cutoff_hist = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=days)
+            hist_df = hist_df[hist_df["time"] >= cutoff_hist].sort_values("time")
+            if len(hist_df) >= 2:
+                start_eq = float(hist_df["equity"].iloc[0])
+                end_eq = float(hist_df["equity"].iloc[-1])
+                window_profit = end_eq - start_eq
+                window_profit_pct = (window_profit / start_eq * 100) if start_eq else 0.0
+
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric(
+        f"Net account profit ({days}d)",
+        f"${window_profit:,.2f}",
+        f"{window_profit_pct:+.2f}%",
+        help="How much total account value changed over the selected days. This includes both realized and unrealized changes.",
+    )
+    r2.metric(
+        f"Profit-taking sells ({days}d)",
+        f"{sell_count}",
+        help="Number of completed sell orders in the selected window.",
+    )
+    r3.metric(
+        f"Sell notional ({days}d)",
+        f"${sell_notional:,.2f}",
+        help="Total dollars sold in the selected window. Useful for seeing if we are actually taking chips off the table.",
+    )
+    r4.metric(
+        f"Avg sell size ({days}d)",
+        f"${avg_sell_size:,.2f}",
+        help="Average dollar size per completed sell order in the selected window.",
+    )
+
+    st.info("Noob note: 'Net account profit' is the clearest answer to 'did we make money?'. The sell metrics show whether profits are actually being taken via sell orders.")
+
+with tabs[4]:
     docs_reference_panel()
 
 st.markdown(
